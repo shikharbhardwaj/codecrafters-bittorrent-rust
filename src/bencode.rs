@@ -12,7 +12,9 @@ fn decoded_value_to_string(decoded_value: &serde_bencode::value::Value) -> Strin
         serde_bencode::value::Value::Bytes(v) => format!("\"{}\"", std::str::from_utf8(v).unwrap()),
         serde_bencode::value::Value::List(v) => 
             format!("[{}]", v.iter().map(|x| decoded_value_to_string(x)).collect::<Vec<String>>().join(",")),
-        _ => panic!("Lol"),
+        serde_bencode::value::Value::Dict(v) => 
+            format!("{{{}}}", v.iter().map(|x| format!("\"{}\":{}", std::str::from_utf8(x.0).unwrap(),
+                decoded_value_to_string(x.1))).collect::<Vec<String>>().join(",")),
     };
 
     return x;
