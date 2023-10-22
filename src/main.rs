@@ -1,5 +1,7 @@
 use std::env;
 
+use bencode::show_decoded_value;
+
 mod bencode;
 
 // Usage: your_bittorrent.sh decode "<encoded_value>"
@@ -13,13 +15,7 @@ fn main() {
         let encoded_value = &args[2];
         let decoded_value = bencode::decode_bencoded_value(encoded_value);
 
-        let x = match decoded_value {
-            serde_bencode::value::Value::Int(x) => format!("{}", x),
-            serde_bencode::value::Value::Bytes(v) => format!("\"{}\"", std::str::from_utf8(&v).unwrap()),
-            _ => panic!("Lol"),
-        };
-
-        println!("{}", x);
+        show_decoded_value(decoded_value);
     } else {
         println!("unknown command: {}", args[1])
     }
