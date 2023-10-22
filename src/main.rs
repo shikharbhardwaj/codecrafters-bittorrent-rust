@@ -1,20 +1,6 @@
-use serde_json;
 use std::env;
 
-#[allow(dead_code)]
-fn decode_bencoded_value(encoded_value: &str) -> serde_json::Value {
-    // If encoded_value starts with a digit, it's a number
-    if encoded_value.chars().next().unwrap().is_digit(10) {
-        // Example: "5:hello" -> "hello"
-        let colon_index = encoded_value.find(':').unwrap();
-        let number_string = &encoded_value[..colon_index];
-        let number = number_string.parse::<i64>().unwrap();
-        let string = &encoded_value[colon_index + 1..colon_index + 1 + number as usize];
-        return serde_json::Value::String(string.to_string());
-    } else {
-        panic!("Unhandled encoded value: {}", encoded_value)
-    }
-}
+mod bencode;
 
 // Usage: your_bittorrent.sh decode "<encoded_value>"
 fn main() {
@@ -25,8 +11,15 @@ fn main() {
         // You can use print statements as follows for debugging, they'll be visible when running tests.
         // Uncomment this block to pass the first stage
         let encoded_value = &args[2];
-        let decoded_value = decode_bencoded_value(encoded_value);
-        println!("{}", decoded_value.to_string());
+        let decoded_value = bencode::decode_bencoded_value(encoded_value);
+
+        let x = match decoded_value {
+            serde_bencode::value::Value::Int(x) => format!("{}", x),
+            serde_bencode::value::Value::Bytes(v) => format!("{}", std::str::from_utf8(&v).unwrap()),
+            _ => panic!("Lol"),
+        };
+
+        println!("{}", x);
     } else {
         println!("unknown command: {}", args[1])
     }
