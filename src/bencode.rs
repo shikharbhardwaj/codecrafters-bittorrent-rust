@@ -1,4 +1,7 @@
 use serde_bencode;
+use std::fs;
+
+use crate::domain::Torrent;
 
 pub fn decode_bencoded_value(encoded_value: &str) -> serde_bencode::value::Value {
     let deserialized: serde_bencode::value::Value = serde_bencode::from_str(&encoded_value).unwrap();
@@ -22,4 +25,12 @@ fn decoded_value_to_string(decoded_value: &serde_bencode::value::Value) -> Strin
 
 pub fn show_decoded_value(value: serde_bencode::value::Value) {
     println!("{}", decoded_value_to_string(&value));
+}
+
+pub fn decode_torrent(file_path: &str) -> Result<Torrent, &'static str> {
+    let contents = fs::read(file_path).expect("Unable to read file contents");
+    let torrent: Torrent = serde_bencode::from_bytes(&contents)
+        .expect("Unable to parse bencoded torrent.");
+
+    return Ok(torrent);
 }
