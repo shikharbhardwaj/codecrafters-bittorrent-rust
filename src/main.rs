@@ -15,7 +15,7 @@ fn main() {
 
         let x = match decoded_value {
             serde_bencode::value::Value::Int(x) => format!("{}", x),
-            serde_bencode::value::Value::Bytes(v) => format!("{}", std::str::from_utf8(&v).unwrap()),
+            serde_bencode::value::Value::Bytes(v) => format!("\"{}\"", std::str::from_utf8(&v).unwrap()),
             _ => panic!("Lol"),
         };
 
