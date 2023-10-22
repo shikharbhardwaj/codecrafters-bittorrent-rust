@@ -23,8 +23,6 @@ fn main() {
 
     if command == "decode" {
         // You can use print statements as follows for debugging, they'll be visible when running tests.
-        println!("Logs from your program will appear here!");
-
         // Uncomment this block to pass the first stage
         let encoded_value = &args[2];
         let decoded_value = decode_bencoded_value(encoded_value);
