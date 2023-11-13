@@ -1,9 +1,11 @@
 use std::env;
 
 mod bencode;
+mod client;
 mod domain;
 
 use bencode::show_decoded_value;
+use client::Client;
 use domain::calculate_info_hash;
 
 fn main() {
@@ -33,18 +35,26 @@ fn main() {
         }
 
         const SHA_LENGTH:usize = 20;
-        let pieces_vec = decoded_torrent.info.pieces.to_vec();
+        let pieces = decoded_torrent.info.pieces;
 
         for i in 0..num_pieces {
             let start_idx = i as usize * SHA_LENGTH;
             let end_idx = (start_idx + SHA_LENGTH) as usize;
 
-            if start_idx < pieces_vec.len() && end_idx <= pieces_vec.len() && start_idx <= end_idx {
-                let my_slice = &pieces_vec[start_idx..end_idx];
-
-                // Print the resulting slice
+            if start_idx < pieces.len() && end_idx <= pieces.len() && start_idx <= end_idx {
+                let my_slice = &pieces[start_idx..end_idx];
                 println!("{:}", hex::encode(my_slice))
             }
+        }
+    } else if command == "peers" {
+        let file_path = &args[2];
+
+        let decoded_torrent = bencode::decode_torrent(file_path).unwrap();
+        let client = Client::new();
+
+        let peers = client.discover_peers(&decoded_torrent).expect("Could not discover peers from torrent.");
+        for peer in peers {
+            println!("{}", peer);
         }
     } else {
         println!("unknown command: {}", args[1])

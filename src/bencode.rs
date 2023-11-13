@@ -1,7 +1,8 @@
+use bytes::Bytes;
 use serde_bencode;
 use std::fs;
 
-use crate::domain::Torrent;
+use crate::domain::{Torrent, AnnounceResponse};
 
 pub fn decode_bencoded_value(encoded_value: &str) -> serde_bencode::value::Value {
     let deserialized: serde_bencode::value::Value = serde_bencode::from_str(&encoded_value).unwrap();
@@ -36,4 +37,8 @@ pub fn decode_torrent(file_path: &str) -> Result<Torrent, &'static str> {
         .expect("Unable to parse bencoded torrent.");
 
     return Ok(torrent);
+}
+
+pub fn decode_announce_response(response: &Bytes) -> AnnounceResponse {
+    return serde_bencode::from_bytes(response).unwrap();
 }

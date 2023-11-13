@@ -20,6 +20,12 @@ pub struct TorrentInfo {
     pub pieces: ByteBuf,
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+pub struct AnnounceResponse {
+    pub interval: Option<i64>,
+    pub peers: ByteBuf,
+}
+
 pub fn calculate_info_hash(
     torrent_info: &TorrentInfo,
 ) -> Result<String, Box<dyn std::error::Error>> {
