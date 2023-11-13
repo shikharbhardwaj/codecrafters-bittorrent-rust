@@ -3,12 +3,14 @@ use std::env;
 mod bencode;
 mod client;
 mod domain;
+mod logging;
 
 use bencode::show_decoded_value;
 use client::Client;
 use domain::calculate_info_hash;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args: Vec<String> = env::args().collect();
     let command = &args[1];
 
@@ -24,38 +26,52 @@ fn main() {
 
         println!("Tracker URL: {}", decoded_torrent.announce);
         println!("Length: {:?}", decoded_torrent.info.length.unwrap());
-        println!("Info Hash: {}", calculate_info_hash(&decoded_torrent.info).expect("Could not calculate info hash"));
+        println!(
+            "Info Hash: {}",
+            calculate_info_hash(&decoded_torrent.info).expect("Could not calculate info hash")
+        );
         println!("Piece Length: {:?}", decoded_torrent.info.piece_length);
 
         let length = decoded_torrent.info.length.unwrap();
-        let piece_length =  decoded_torrent.info.piece_length;
+        let piece_length = decoded_torrent.info.piece_length;
         let mut num_pieces = length / piece_length;
         if length % piece_length != 0 {
             num_pieces += 1;
         }
 
-        const SHA_LENGTH:usize = 20;
+        const SHA_LENGTH: usize = 20;
         let pieces = decoded_torrent.info.pieces;
 
         for i in 0..num_pieces {
             let start_idx = i as usize * SHA_LENGTH;
             let end_idx = (start_idx + SHA_LENGTH) as usize;
-
-            if start_idx < pieces.len() && end_idx <= pieces.len() && start_idx <= end_idx {
-                let my_slice = &pieces[start_idx..end_idx];
-                println!("{:}", hex::encode(my_slice))
-            }
+            println!("{:}", hex::encode(&pieces[start_idx..end_idx]));
         }
     } else if command == "peers" {
         let file_path = &args[2];
 
         let decoded_torrent = bencode::decode_torrent(file_path).unwrap();
-        let client = Client::new();
+        let client = Client::new("00112233445566778899".to_string());
 
-        let peers = client.discover_peers(&decoded_torrent).expect("Could not discover peers from torrent.");
+        let peers = client
+            .discover_peers(&decoded_torrent)
+            .expect("Could not discover peers from torrent.");
         for peer in peers {
             println!("{}", peer);
         }
+    } else if command == "handshake" {
+        let file_path = &args[2];
+        let peer_addr = &args[3];
+
+        let decoded_torrent = bencode::decode_torrent(file_path).unwrap();
+        let client = Client::new("00112233445566778899".to_string());
+
+        let peer_info = client
+            .peer_handshake(peer_addr, &decoded_torrent)
+            .await
+            .expect("Could not perform peer handshake");
+
+        println!("Peer ID: {}", hex::encode(peer_info.id));
     } else {
         println!("unknown command: {}", args[1])
     }

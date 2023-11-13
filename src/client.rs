@@ -1,11 +1,18 @@
-use crate::{domain::{Torrent, calculate_info_hash}, bencode::decode_announce_response};
+use bytes::{Bytes, BytesMut, BufMut};
+use tokio::{net::TcpStream, io::{AsyncWriteExt, AsyncReadExt}};
+
+use crate::{domain::{Torrent, calculate_info_hash, PeerInfo}, bencode::decode_announce_response};
 
 
-pub struct Client {}
+pub struct Client {
+    peer_id: String
+}
 
 impl Client {
-    pub fn new() -> Client {
-        Client {  }
+    pub fn new(peer_id: String) -> Client {
+        Client {
+            peer_id
+        }
     }
 
     pub fn discover_peers(&self, torrent: &Torrent) -> Result<Vec<String>, Box<dyn std::error::Error>> {
@@ -23,8 +30,8 @@ impl Client {
         }
         announce_url += &format!("?info_hash={}", urlencoded_info_hash);
 
-        let peer_id = "00112233445566778899";
-        params.push(("peer_id", peer_id.to_string()));
+        let peer_id = self.peer_id.clone();
+        params.push(("peer_id", peer_id));
 
         let port = "6881";
         params.push(("port", port.to_string()));
@@ -78,5 +85,31 @@ impl Client {
         }
 
         return Ok(peers);
+    }
+
+    pub async fn peer_handshake(&self, peer_addr: &String, torrent: &Torrent) -> Result<PeerInfo, Box<dyn std::error::Error>> {
+        let mut stream = TcpStream::connect(peer_addr).await.expect("Failed to connect to peer.");
+
+        let info_hash_hex = calculate_info_hash(&torrent.info)?;
+        let decoded_info_hash = hex::decode(info_hash_hex).expect("Could not decode info hash");
+        let message = self.get_handshake_message(&decoded_info_hash);
+
+        stream.write_all(&message).await.expect("Failed to send handshake message to stream.");
+
+        let mut buffer = [0; 1024];
+        stream.read(&mut buffer).await.expect("Failed to read peer reply from stream.");
+
+        return Ok(PeerInfo::from_bytes(Bytes::from(buffer.to_vec()), &decoded_info_hash).expect("Could not parse peer response."))
+    }
+
+    fn get_handshake_message(&self, info_hash: &Vec<u8>) -> Bytes {
+        let mut buf = BytesMut::with_capacity(1024);
+        buf.put_u8(19);
+        buf.put(&b"BitTorrent protocol"[..]);
+        buf.put_bytes(0, 8);
+        buf.put(info_hash.as_slice());
+        buf.put(self.peer_id.as_bytes());
+
+        return buf.into();
     }
 }
