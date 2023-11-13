@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 
+extern crate sha1;
+
+use sha1::{Digest, Sha1};
+
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct Torrent {
     pub announce: String,
@@ -16,3 +20,13 @@ pub struct TorrentInfo {
     pub pieces: ByteBuf,
 }
 
+pub fn calculate_info_hash(
+    torrent_info: TorrentInfo,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let serialized = serde_bencode::to_bytes(&torrent_info)?;
+
+    let mut hasher = Sha1::new();
+    hasher.update(serialized);
+
+    return Ok(format!("{:x}", hasher.finalize()));
+}
