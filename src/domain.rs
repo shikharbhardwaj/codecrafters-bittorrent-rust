@@ -21,7 +21,7 @@ pub struct TorrentInfo {
 }
 
 pub fn calculate_info_hash(
-    torrent_info: TorrentInfo,
+    torrent_info: &TorrentInfo,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let serialized = serde_bencode::to_bytes(&torrent_info)?;
 
