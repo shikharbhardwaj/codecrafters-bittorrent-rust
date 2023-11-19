@@ -108,8 +108,17 @@ async fn main() {
             let file_path: &String = sub_m.get_one("file_path").unwrap();
             let decoded_torrent = decode_torrent(file_path).unwrap();
 
+            info!("Length: {:?}", decoded_torrent.info.length.unwrap());
+            info!(
+                "Info Hash: {}",
+                calculate_info_hash(&decoded_torrent.info).expect("Could not calculate info hash")
+            );
+            info!("Piece Length: {:?}", decoded_torrent.info.piece_length);
+
             let output_path: &String = sub_m.get_one("output_path").unwrap();
             let piece_index: u32 = *sub_m.get_one("piece_index").unwrap();
+
+            info!("Downloading piece index: {}", piece_index);
 
             let mut client = Client::new("00112233445566778899".to_string());
 

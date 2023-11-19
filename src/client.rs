@@ -187,6 +187,7 @@ impl Client {
                 length: torrent.get_block_length(piece_index as usize, block_offset) as u32};
             
             self.send_message(peer_id, &PeerMessage::Request(request_message)).await?;
+            debug!("Sent request message for block with offset: {}", block_offset);
 
             let mut block_pending= true;
 
