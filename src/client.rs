@@ -183,7 +183,7 @@ impl Client {
             debug!("Downloading block with offset: {}", block_offset);
             let request_message = RequestMessage{
                 index: piece_index,
-                begin: block_offset as u32,
+                begin: (block_offset * Torrent::BLOCK_SIZE) as u32,
                 length: torrent.get_block_length(piece_index as usize, block_offset) as u32};
             
             self.send_message(peer_id, &PeerMessage::Request(request_message)).await?;
@@ -196,6 +196,7 @@ impl Client {
                 match message {
                     PeerMessage::Piece(piece) => {
                         debug!("Received peice message for block offset: {}", block_offset);
+                        debug!("Got piece with index: {} begin: {}", piece.index, piece.begin);
                         piece_data.extend(&piece.piece);
                         block_pending = false;
                     },

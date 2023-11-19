@@ -7,6 +7,8 @@ extern crate sha1;
 use sha1::{Digest, Sha1};
 use tokio::{io::{BufReader, AsyncReadExt}, net::TcpStream};
 
+use crate::debug;
+
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct Torrent {
     pub announce: String,
@@ -23,7 +25,7 @@ pub struct TorrentInfo {
 }
 
 impl Torrent {
-    const BLOCK_SIZE: usize = 16 * 1024;
+    pub const BLOCK_SIZE: usize = 16 * 1024;
 
     pub fn get_num_pieces(&self) -> i64 {
         let length = self.info.length.unwrap();
@@ -149,6 +151,7 @@ impl PeerMessage {
                 let begin = input.read_u32().await?;
 
                 let piece_length = message_length - 2 * 4 - 1;
+                debug!("Reading piece data of length: {}", piece_length);
                 let mut piece_data = vec![0; piece_length as usize];
                 let bytes_read = input.read_exact(&mut piece_data).await?;
 
