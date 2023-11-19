@@ -1,3 +1,5 @@
+use std::{fs::File, io::BufWriter};
+
 use bittorrent_starter_rust::{
     bencode::{show_decoded_value, decode_bencoded_value, decode_torrent}, 
     client::Client,
@@ -39,6 +41,12 @@ async fn main() {
                 .arg(Arg::new("file_path").index(1).required(true))
                 .arg(Arg::new("output_path").short('o').long("output").action(ArgAction::Set).required(true))
                 .arg(Arg::new("piece_index").index(2).required(true).value_parser(clap::value_parser!(u32))),
+        )
+        .subcommand(
+            Command::new("download")
+                .about("Download the whole file")
+                .arg(Arg::new("file_path").index(1).required(true))
+                .arg(Arg::new("output_path").short('o').long("output").action(ArgAction::Set).required(true))
         )
         .get_matches();
 
@@ -134,7 +142,41 @@ async fn main() {
             let peer_id = hex::encode(peer_info.id);
             info!("Got peer id: {}", peer_id);
 
-            client.download_piece(piece_index, &decoded_torrent, &peer_id, output_path).await.expect("Could not download piece");
+            let f = File::create(output_path).expect("Unable to create destination file.");
+            let mut buf = BufWriter::new(f);
+
+            client.download_piece(piece_index, &decoded_torrent, &peer_id, &mut buf).await.expect("Could not download piece");
+        }
+        Some(("download", sub_m)) => {
+            let file_path: &String = sub_m.get_one("file_path").unwrap();
+            let decoded_torrent = decode_torrent(file_path).unwrap();
+
+            info!("Length: {:?}", decoded_torrent.info.length.unwrap());
+            info!(
+                "Info Hash: {}",
+                calculate_info_hash(&decoded_torrent.info).expect("Could not calculate info hash")
+            );
+            info!("Piece Length: {:?}", decoded_torrent.info.piece_length);
+
+            let output_path: &String = sub_m.get_one("output_path").unwrap();
+            let mut client = Client::new("00112233445566778899".to_string());
+
+            // TODO: Make it query all peers.
+            let peers = client.discover_peers(&decoded_torrent).expect("Could not discover peers from announce info");
+
+            let peer_addr = &peers[0];
+            info!("Initiating handshake with peer: {}", peer_addr);
+            let peer_info = client
+                .peer_handshake(peer_addr, &decoded_torrent)
+                .await
+                .expect("Could not perform peer handshake");
+            let peer_id = hex::encode(peer_info.id);
+            info!("Got peer id: {}", peer_id);
+
+            let f = File::create(output_path).expect("Unable to create destination file.");
+            let mut buf = BufWriter::new(f);
+
+            client.download_file(&decoded_torrent, &peer_id, &mut buf).await.expect("Could not download piece");
         }
         _ => {
             unreachable!("clap ensures we don't get here")

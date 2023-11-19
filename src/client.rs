@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::{BufWriter, Write}};
 
 use bytes::{Bytes, BytesMut, BufMut};
 use sha1::{Digest, Sha1};
@@ -6,20 +6,23 @@ use tokio::{net::TcpStream, io::{AsyncWriteExt, AsyncReadExt, BufReader}};
 
 use crate::{
     domain::{Torrent, calculate_info_hash, PeerInfo, PeerMessage, RequestMessage},
-    bencode::decode_announce_response, info, debug};
+    bencode::decode_announce_response, info, debug, warn};
 
 pub struct Client {
     peer_id: String,
     connections: HashMap<String, TcpStream>,
+    bitfields: HashMap<String, Vec<u8>>,
 }
 
 impl Client {
     pub fn new(peer_id: String) -> Client {
         let connections: HashMap<String, TcpStream> = HashMap::new();
+        let bitfield_received: HashMap<String, Vec<u8>> = HashMap::new();
 
         Client {
             peer_id,
             connections,
+            bitfields: bitfield_received,
         }
     }
 
@@ -141,39 +144,49 @@ impl Client {
         return buf.into();
     }
 
-    pub async fn download_piece(&mut self, piece_index: u32, torrent: &Torrent, peer_id: &String, output_path: &str) -> Result<(), Box<dyn std::error::Error>>{
-        // 1. Get bitfield message.
-        let bitfield_message = self.recv_message(peer_id).await?;
-        match bitfield_message {
-            PeerMessage::Bitfield(_) => {
-                // TODO: Actually check if the bitfield message has the piece
-                // index we've asked for, otherwise bail.
-                info!("Received bitfield message from peer: {}", peer_id);
+    pub async fn download_piece<W: Write>(&mut self, piece_index: u32, torrent: &Torrent, peer_id: &String, out: &mut BufWriter<W>) -> Result<(), Box<dyn std::error::Error>>{
+        // 1. Get bitfield message, if present. Otherwise do the one-time
+        // initialization steps.
+        let bitfield = self.bitfields.get(peer_id);
+
+        match bitfield {
+            Some(_) => {
+                debug!("Already have bitfield for this peer, proceeding.");
             },
-            _ => return Err(format!("Invalid peer message type received instead of bitfield message: ").into())
-        }
+            _ => {
+                let bitfield_message = self.recv_message(peer_id).await?;
+                match bitfield_message {
+                    PeerMessage::Bitfield(b) => {
+                        // TODO: Actually check if the bitfield message has the piece
+                        // index we've asked for, otherwise bail.
+                        info!("Received bitfield message from peer: {}", peer_id);
+                        self.bitfields.insert(peer_id.to_string(), b.to_vec());
+                    },
+                    _ => return Err(format!("Invalid peer message type received instead of bitfield message: ").into())
+                }
 
-        // Say that we're interested in this peer.
-        info!("Sending interested message to peer: {}", peer_id);
-        self.send_message(peer_id, &PeerMessage::Interested).await?;
-        info!("Sent interested message: {}", peer_id);
-        let mut proceed = false;
+                // Say that we're interested in this peer.
+                info!("Sending interested message to peer: {}", peer_id);
+                self.send_message(peer_id, &PeerMessage::Interested).await?;
+                info!("Sent interested message: {}", peer_id);
+                let mut proceed = false;
 
-        while !proceed {
-            let unchoke_message = self.recv_message(peer_id).await?;
+                while !proceed {
+                    let unchoke_message = self.recv_message(peer_id).await?;
 
-            match unchoke_message {
-                PeerMessage::Unchoke => {
-                    info!("Received unchoke message from peer: {}", peer_id);
-                    proceed = true;
-                },
-                PeerMessage::Keepalive => {
-                    info!("Received keepalive message from peer: {}", peer_id);
-                },
-                _ => return Err(format!("Invalid peer message type received instead of unchoke message: ").into())
+                    match unchoke_message {
+                        PeerMessage::Unchoke => {
+                            info!("Received unchoke message from peer: {}", peer_id);
+                            proceed = true;
+                        },
+                        PeerMessage::Keepalive => {
+                            info!("Received keepalive message from peer: {}", peer_id);
+                        },
+                        _ => return Err(format!("Invalid peer message type received instead of unchoke message: ").into())
+                    }
+                }
             }
         }
-
 
         // We'll keep it simple and download the piece sequentially.
         let num_blocks = torrent.get_num_blocks(piece_index.try_into().unwrap());
@@ -219,7 +232,30 @@ impl Client {
         }
         
         // Store piece in the output location.
-        std::fs::write(output_path, piece_data)?;
+        out.write_all(&piece_data)?;
+
+        Ok(())
+    }
+
+    pub async fn download_file<W: Write>(&mut self, torrent: &Torrent, peer_id: &String, out: &mut BufWriter<W>) -> Result<(), Box<dyn std::error::Error>> {
+        let num_pieces = torrent.get_num_pieces() as u32;
+
+        for piece_index in 0..num_pieces {
+            info!("Downloading piece: {}", piece_index);
+
+            let mut piece_done = false;
+            while !piece_done {
+                match self.download_piece(piece_index, torrent, peer_id, out).await {
+                    Ok(_) => {
+                        info!("Downloaded piece: {}", piece_index);
+                        piece_done = true;
+                    },
+                    Err(_) => {
+                        warn!("Failed to download piece: {}, trying again", piece_index);
+                    }
+                }
+            }
+        }
 
         Ok(())
     }
