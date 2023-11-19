@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use bytes::{Bytes, BytesMut, BufMut};
+use sha1::{Digest, Sha1};
 use tokio::{net::TcpStream, io::{AsyncWriteExt, AsyncReadExt, BufReader}};
 
 use crate::{
@@ -208,7 +209,14 @@ impl Client {
             }
         }
 
-        // TODO:Calculate SHA to validate the piece 
+        // Checksum
+        let mut hasher = Sha1::new();
+        hasher.update(&piece_data);
+        let sha1_hash = format!("{:x}", hasher.finalize());
+
+        if sha1_hash != torrent.get_piece_sha(piece_index as usize) {
+            return Err(format!("Mismatch while error checking SHA1 checksum").into())
+        }
         
         // Store piece in the output location.
         std::fs::write(output_path, piece_data)?;

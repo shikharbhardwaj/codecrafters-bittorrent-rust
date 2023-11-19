@@ -26,6 +26,7 @@ pub struct TorrentInfo {
 
 impl Torrent {
     pub const BLOCK_SIZE: usize = 16 * 1024;
+    const SHA_LENGTH: usize = 20;
 
     pub fn get_num_pieces(&self) -> i64 {
         let length = self.info.length.unwrap();
@@ -56,6 +57,15 @@ impl Torrent {
             },
             _ => Self::BLOCK_SIZE,
         }
+    }
+
+    pub fn get_piece_sha(&self, piece_index: usize) -> String {
+        assert!((piece_index as i64) < self.get_num_pieces());
+
+        let start_idx = piece_index * Self::SHA_LENGTH;
+        let end_idx = start_idx + Self::SHA_LENGTH;
+
+        hex::encode(&self.info.pieces[start_idx..end_idx])
     }
 }
 
