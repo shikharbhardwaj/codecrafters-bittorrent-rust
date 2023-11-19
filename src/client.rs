@@ -175,7 +175,7 @@ impl Client {
 
 
         // We'll keep it simple and download the piece sequentially.
-        let num_blocks = torrent.get_num_blocks();
+        let num_blocks = torrent.get_num_blocks(piece_index.try_into().unwrap());
 
         let mut piece_data: Vec<u8> = vec![];
 

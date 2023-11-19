@@ -38,13 +38,19 @@ impl Torrent {
         return num_pieces;
     }
 
-    pub fn get_num_blocks(&self) -> usize {
+    pub fn get_num_blocks(&self, piece_index: usize) -> usize {
+        if piece_index + 1 == self.get_num_pieces() as usize {
+            let last_piece_length = (self.info.length.unwrap() % self.info.piece_length) as usize;
+
+            return last_piece_length / Self::BLOCK_SIZE + ((last_piece_length % Self::BLOCK_SIZE != 0) as usize);
+        }
+
         self.info.piece_length as usize / Self::BLOCK_SIZE
     }
 
     pub fn get_block_length(&self, piece_index: usize, block_offset: usize) -> usize {
         match block_offset {
-            _ if block_offset + 1 == self.get_num_blocks() && piece_index + 1 == self.get_num_pieces() as usize => {
+            _ if block_offset + 1 == self.get_num_blocks(piece_index) && piece_index + 1 == self.get_num_pieces() as usize => {
                 let last_piece_length = self.info.length.unwrap() % self.info.piece_length;
                 last_piece_length as usize % Self::BLOCK_SIZE
             },
