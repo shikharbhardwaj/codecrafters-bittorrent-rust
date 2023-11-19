@@ -1,13 +1,10 @@
 use std::env;
 
-mod bencode;
-mod client;
-mod domain;
-mod logging;
-
-use bencode::show_decoded_value;
-use client::Client;
-use domain::calculate_info_hash;
+use bittorrent_starter_rust::{
+    bencode::{show_decoded_value, decode_bencoded_value, decode_torrent}, 
+    client::Client,
+    domain::calculate_info_hash
+};
 
 #[tokio::main]
 async fn main() {
@@ -16,13 +13,13 @@ async fn main() {
 
     if command == "decode" {
         let encoded_value = &args[2];
-        let decoded_value = bencode::decode_bencoded_value(encoded_value);
+        let decoded_value = decode_bencoded_value(encoded_value);
 
         show_decoded_value(decoded_value);
     } else if command == "info" {
         let file_path = &args[2];
 
-        let decoded_torrent = bencode::decode_torrent(file_path).unwrap();
+        let decoded_torrent = decode_torrent(file_path).unwrap();
 
         println!("Tracker URL: {}", decoded_torrent.announce);
         println!("Length: {:?}", decoded_torrent.info.length.unwrap());
@@ -50,7 +47,7 @@ async fn main() {
     } else if command == "peers" {
         let file_path = &args[2];
 
-        let decoded_torrent = bencode::decode_torrent(file_path).unwrap();
+        let decoded_torrent = decode_torrent(file_path).unwrap();
         let client = Client::new("00112233445566778899".to_string());
 
         let peers = client
@@ -63,8 +60,8 @@ async fn main() {
         let file_path = &args[2];
         let peer_addr = &args[3];
 
-        let decoded_torrent = bencode::decode_torrent(file_path).unwrap();
-        let client = Client::new("00112233445566778899".to_string());
+        let decoded_torrent = decode_torrent(file_path).unwrap();
+        let mut client = Client::new("00112233445566778899".to_string());
 
         let peer_info = client
             .peer_handshake(peer_addr, &decoded_torrent)

@@ -1,17 +1,23 @@
-use bytes::{Bytes, BytesMut, BufMut};
-use tokio::{net::TcpStream, io::{AsyncWriteExt, AsyncReadExt}};
+use std::collections::HashMap;
 
-use crate::{domain::{Torrent, calculate_info_hash, PeerInfo}, bencode::decode_announce_response};
+use bytes::{Bytes, BytesMut, BufMut};
+use tokio::{net::TcpStream, io::{AsyncWriteExt, AsyncReadExt, BufReader}};
+
+use crate::{domain::{Torrent, calculate_info_hash, PeerInfo, PeerMessage}, bencode::decode_announce_response};
 
 
 pub struct Client {
-    peer_id: String
+    peer_id: String,
+    connections: HashMap<String, TcpStream>,
 }
 
 impl Client {
     pub fn new(peer_id: String) -> Client {
+        let connections: HashMap<String, TcpStream> = HashMap::new();
+
         Client {
-            peer_id
+            peer_id,
+            connections,
         }
     }
 
@@ -87,7 +93,7 @@ impl Client {
         return Ok(peers);
     }
 
-    pub async fn peer_handshake(&self, peer_addr: &String, torrent: &Torrent) -> Result<PeerInfo, Box<dyn std::error::Error>> {
+    pub async fn peer_handshake(&mut self, peer_addr: &String, torrent: &Torrent) -> Result<PeerInfo, Box<dyn std::error::Error>> {
         let mut stream = TcpStream::connect(peer_addr).await.expect("Failed to connect to peer.");
 
         let info_hash_hex = calculate_info_hash(&torrent.info)?;
@@ -99,7 +105,27 @@ impl Client {
         let mut buffer = [0; 1024];
         stream.read(&mut buffer).await.expect("Failed to read peer reply from stream.");
 
-        return Ok(PeerInfo::from_bytes(Bytes::from(buffer.to_vec()), &decoded_info_hash).expect("Could not parse peer response."))
+        let peer_info = PeerInfo::from_bytes(Bytes::from(buffer.to_vec()), &decoded_info_hash).expect("Could not parse peer response.");
+
+        let peer_id = hex::encode(&peer_info.id);
+
+        self.connections.insert(peer_id, stream);
+
+        return Ok(peer_info)
+    }
+
+    async fn recv_message(&mut self, peer_id: &String) -> Result<PeerMessage, Box<dyn std::error::Error>> {
+        let stream = self.connections.get_mut(peer_id).expect("Did not find peer in active connections");
+        let mut reader = BufReader::new(stream);
+
+        PeerMessage::from_stream(& mut reader).await
+    }
+
+    async fn send_message(&mut self, peer_id: &String, message: &PeerMessage) -> Result<(), Box<dyn std::error::Error>> {
+        let stream = self.connections.get_mut(peer_id).expect("Did not find peer in active connections");
+
+        stream.write(&message.to_bytes()).await?;
+        return Ok(())
     }
 
     fn get_handshake_message(&self, info_hash: &Vec<u8>) -> Bytes {
