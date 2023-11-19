@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use bytes::{Bytes, BytesMut, BufMut};
 use tokio::{net::TcpStream, io::{AsyncWriteExt, AsyncReadExt, BufReader}};
 
-use crate::{domain::{Torrent, calculate_info_hash, PeerInfo, PeerMessage}, bencode::decode_announce_response};
-
+use crate::{
+    domain::{Torrent, calculate_info_hash, PeerInfo, PeerMessage, RequestMessage},
+    bencode::decode_announce_response, info, debug};
 
 pub struct Client {
     peer_id: String,
@@ -137,5 +138,77 @@ impl Client {
         buf.put(self.peer_id.as_bytes());
 
         return buf.into();
+    }
+
+    pub async fn download_piece(&mut self, piece_index: u32, torrent: &Torrent, peer_id: &String, output_path: &str) -> Result<(), Box<dyn std::error::Error>>{
+        // 1. Get bitfield message.
+        let bitfield_message = self.recv_message(peer_id).await?;
+        match bitfield_message {
+            PeerMessage::Bitfield(_) => {
+                // TODO: Actually check if the bitfield message has the piece
+                // index we've asked for, otherwise bail.
+                info!("Received bitfield message from peer: {}", peer_id);
+            },
+            _ => return Err(format!("Invalid peer message type received instead of bitfield message: ").into())
+        }
+
+        // Say that we're interested in this peer.
+        info!("Sending interested message to peer: {}", peer_id);
+        self.send_message(peer_id, &PeerMessage::Interested).await?;
+        info!("Sent interested message: {}", peer_id);
+        let mut proceed = false;
+
+        while !proceed {
+            let unchoke_message = self.recv_message(peer_id).await?;
+
+            match unchoke_message {
+                PeerMessage::Unchoke => {
+                    info!("Received unchoke message from peer: {}", peer_id);
+                    proceed = true;
+                },
+                PeerMessage::Keepalive => {
+                    info!("Received keepalive message from peer: {}", peer_id);
+                },
+                _ => return Err(format!("Invalid peer message type received instead of unchoke message: ").into())
+            }
+        }
+
+
+        // We'll keep it simple and download the piece sequentially.
+        let num_blocks = torrent.get_num_blocks();
+
+        let mut piece_data: Vec<u8> = vec![];
+
+        for block_offset in 0..num_blocks {
+            debug!("Downloading block with offset: {}", block_offset);
+            let request_message = RequestMessage{
+                index: piece_index,
+                begin: block_offset as u32,
+                length: torrent.get_block_length(piece_index as usize, block_offset) as u32};
+            
+            self.send_message(peer_id, &PeerMessage::Request(request_message)).await?;
+
+            let mut block_pending= true;
+
+            while block_pending {
+                let message = self.recv_message(peer_id).await?;
+
+                match message {
+                    PeerMessage::Piece(piece) => {
+                        debug!("Received peice message for block offset: {}", block_offset);
+                        piece_data.extend(&piece.piece);
+                        block_pending = false;
+                    },
+                    _ => {}
+                }
+            }
+        }
+
+        // TODO:Calculate SHA to validate the piece 
+        
+        // Store piece in the output location.
+        std::fs::write(output_path, piece_data)?;
+
+        Ok(())
     }
 }

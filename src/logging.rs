@@ -60,7 +60,7 @@ pub fn init() -> SimpleLogger {
 static LOGGER: SimpleLogger = SimpleLogger { log_level: LogLevel::Info };
 
 // Accessor function to get the logger instance
-pub(crate) fn get_logger() -> &'static SimpleLogger {
+pub fn get_logger() -> &'static SimpleLogger {
     &LOGGER
 }
 

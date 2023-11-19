@@ -22,6 +22,35 @@ pub struct TorrentInfo {
     pub pieces: ByteBuf,
 }
 
+impl Torrent {
+    const BLOCK_SIZE: usize = 16 * 1024;
+
+    pub fn get_num_pieces(&self) -> i64 {
+        let length = self.info.length.unwrap();
+        let piece_length = self.info.piece_length;
+        let mut num_pieces = length / piece_length;
+        if length % piece_length != 0 {
+            num_pieces += 1;
+        }
+
+        return num_pieces;
+    }
+
+    pub fn get_num_blocks(&self) -> usize {
+        self.info.piece_length as usize / Self::BLOCK_SIZE
+    }
+
+    pub fn get_block_length(&self, piece_index: usize, block_offset: usize) -> usize {
+        match block_offset {
+            _ if block_offset + 1 == self.get_num_blocks() && piece_index + 1 == self.get_num_pieces() as usize => {
+                let last_piece_length = self.info.length.unwrap() % self.info.piece_length;
+                last_piece_length as usize % Self::BLOCK_SIZE
+            },
+            _ => Self::BLOCK_SIZE,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct AnnounceResponse {
     pub interval: Option<i64>,
@@ -70,7 +99,7 @@ impl PeerInfo {
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum PeerMessage {
-    Choke = 1,
+    Choke,
     Unchoke,
     Interested,
     NotInterested,
@@ -118,9 +147,12 @@ impl PeerMessage {
             7 => {
                 let index = input.read_u32().await?;
                 let begin = input.read_u32().await?;
-                let piece = input.read_u32().await?;
 
-                Ok(PeerMessage::Piece(PieceMessage { index:  index.into(), begin: begin.into(), piece: piece.into() }))
+                let piece_length = message_length - 2 * 4 - 1;
+                let mut piece_data = vec![0; piece_length as usize];
+                let bytes_read = input.read_exact(&mut piece_data).await?;
+
+                Ok(PeerMessage::Piece(PieceMessage { index:  index.into(), begin: begin.into(), piece: piece_data }))
             },
             8 => {
                 let index = input.read_u32().await?;
@@ -135,10 +167,10 @@ impl PeerMessage {
 
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
-            PeerMessage::Choke => b"\x01\x00".to_vec(),
-            PeerMessage::Unchoke => b"\x01\x01".to_vec(),
-            PeerMessage::Interested => b"\x01\x02".to_vec(),
-            PeerMessage::NotInterested => b"\x01\x03".to_vec(),
+            PeerMessage::Choke => b"\x00\x00\x00\x01\x00".to_vec(),
+            PeerMessage::Unchoke => b"\x00\x00\x00\x01\x01".to_vec(),
+            PeerMessage::Interested => b"\x00\x00\x00\x01\x02".to_vec(),
+            PeerMessage::NotInterested => b"\x00\x00\x00\x01\x03".to_vec(),
             PeerMessage::Have(idx) => {
                 let mut buf = vec![];
                 let length: u32 = 5;
@@ -171,7 +203,7 @@ impl PeerMessage {
             PeerMessage::Piece(req) => {
                 let mut buf: Vec<u8> = vec![];
 
-                let length: u32 = 3*4 + 1;
+                let length: u32 = 2*4 + 1 + req.piece.len() as u32;
                 buf.extend_from_slice(&length.to_be_bytes());
                 buf.push(6);
 
@@ -224,7 +256,7 @@ impl RequestMessage {
 pub struct PieceMessage {
     pub index: u32,
     pub begin: u32,
-    pub piece: u32,
+    pub piece: Vec<u8>,
 }
 
 impl PieceMessage {
@@ -232,7 +264,7 @@ impl PieceMessage {
         let mut buf = vec![];
         buf.extend(self.index.to_be_bytes());
         buf.extend(self.begin.to_be_bytes());
-        buf.extend(self.piece.to_be_bytes());
+        buf.extend(&self.piece);
 
         buf
     }
