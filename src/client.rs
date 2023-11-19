@@ -154,6 +154,7 @@ impl Client {
                 debug!("Already have bitfield for this peer, proceeding.");
             },
             _ => {
+                debug!("Waiting for bitfield message and showing interest.");
                 let bitfield_message = self.recv_message(peer_id).await?;
                 match bitfield_message {
                     PeerMessage::Bitfield(b) => {
